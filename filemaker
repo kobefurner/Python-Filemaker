@@ -1,0 +1,155 @@
+#!/usr/bin/python3
+# Kobe Furner
+# Lab 6 - Filemaker
+# CS 3030 - Scripting Languages
+
+#Imports
+import random
+import shlex
+import sys
+
+#Read from the file
+def read_file(filename):
+    try:
+        with open(filename, 'r') as file:
+            return file.readlines()
+    #error handling
+    except IOError as e:
+        print(f"Error reading file '{filename}': {e}")
+        sys.exit(1)
+
+#Process commands from the file
+def process_commands(command_file):
+    #commands list
+    commands = []
+    try:
+        with open(command_file, 'r') as file:
+            for line in file:
+                line = line.strip()
+                #ignore comments and empty lines
+                if not line.startswith('#') and line:
+                    commands.append(line)
+    #error handling                
+    except IOError as e:
+        print(f"Error reading command file '{command_file}': {e}")
+        sys.exit(1)
+    return commands
+
+#Generate random data from commands
+def generate_random_data(commands):
+    random_data = {}
+    random_files = {}
+
+    for command in commands:
+        parts = shlex.split(command.strip())
+        cmd_type = parts[0].upper()
+
+        #Word command
+        if cmd_type == "WORD":
+            label = parts[1]
+            filename = parts[2].strip('"')
+            words = read_file(filename)
+            random_files[label] = [word.strip() for word in words]
+
+        #Integer command
+        elif cmd_type == "INTEGER":
+            label = parts[1]
+            min_val = int(parts[2])
+            max_val = int(parts[3])
+            random_data[label] = (min_val, max_val)
+
+    return random_files, random_data
+
+#Generate output from commands and random data
+def generate_output(commands, random_data, output_file, record_count):
+    #Check that record count is not less than or equal to zero
+    if record_count <= 0:
+        print("Error: RECORDCOUNT must be greater than 0 for output generation.")
+        return
+
+    header = None
+    for command in commands:
+        parts = shlex.split(command.strip())  
+        cmd_type = parts[0].upper()
+
+        if cmd_type == "HEADER":
+            header = parts[1].strip('"').replace("\\n", "")
+            output_file.write(header + '\n')
+
+    # Loop to generate each record
+    for i in range(record_count):
+        output_line = ''
+        previous_values = {}
+
+        for command in commands:
+            parts = shlex.split(command.strip())
+            cmd_type = parts[0].upper()
+
+            #String command
+            if cmd_type == "STRING":
+                output_line += parts[1].strip('"').replace("\\n", "")
+            elif cmd_type == "WORD":  
+                label = parts[1]  
+                if label in random_data[0]: 
+                    random_word = random.choice(random_data[0][label])
+                    output_line += random_word  
+                    previous_values[label] = random_word
+                else:
+                    print(f"Warning: No data found for label '{label}'")
+            
+            #Integer command
+            elif cmd_type == "INTEGER":  
+                label = parts[1]  
+                if label in random_data[1]:
+                    min_val, max_val = random_data[1][label]
+                    random_integer = random.randint(min_val, max_val)
+                    output_line += str(random_integer)
+                    previous_values[label] = random_integer
+                else:
+                    print(f"Warning: No data found for integer label '{label}'")
+            
+            #Refer command
+            elif cmd_type == "REFER":
+                label = parts[1]
+                if label in previous_values:
+                    output_line += str(previous_values[label])
+                else:
+                    print(f"Warning: No previous value found for reference '{label}'")
+
+        #Write to the output file
+        output_file.write(output_line.strip() + '\n')
+
+#Main
+def main():
+    #Check command line arguments
+    if len(sys.argv) != 4:
+        print("Usage: ./filemaker <cmdfile> <outputfile> <recordcount>")
+        sys.exit(1)
+
+    command_file = sys.argv[1]
+    output_file_path = sys.argv[2]
+    record_count_str = sys.argv[3]
+
+    # Validate record count
+    if not record_count_str.isdigit() or int(record_count_str) <= 0:
+        print("Error: RECORDCOUNT must be a positive integer.")
+        sys.exit(1) 
+
+    record_count = int(record_count_str)
+
+    commands = process_commands(command_file)
+    random_files, random_data = generate_random_data(commands)
+
+    # Write to output file
+    try:
+        with open(output_file_path, 'w') as output_file:
+            generate_output(commands, (random_files, random_data), output_file, record_count)
+
+    #error handling
+    except IOError as e:
+        print(f"Error opening output file '{output_file_path}': {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+
